@@ -21,4 +21,4 @@ settings.tk-multi-version.standalone:
   location:
     name: tk-multi-version
     type: dev
-    windows_path: C:\tk-multi-version
+    windows_path: C:\Users\admin\Desktop\ww\tk-multi-version
