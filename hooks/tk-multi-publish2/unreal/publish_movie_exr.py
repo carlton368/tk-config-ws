@@ -805,7 +805,7 @@ class UnrealMoviePublishPlugin(HookBaseClass):
         :param presets: Optional :class:`unreal.MoviePipelineMasterConfig` instance to use for renderig.
         :param str shot_name: Optional shot name to render a single shot from this sequence.
         :returns: True if a movie file was generated, False otherwise
-                  string representing the path of the generated movie file
+                string representing the path of the generated movie file
         :raises ValueError: If a shot name is specified but can't be found in
                             the sequence.
         """
@@ -817,64 +817,34 @@ class UnrealMoviePublishPlugin(HookBaseClass):
         job = queue.allocate_new_job(unreal.MoviePipelineExecutorJob)
         job.sequence = unreal.SoftObjectPath(sequence_path)
         job.map = unreal.SoftObjectPath(unreal_map_path)
-        # If a specific shot was given, disable all the others.
-        if shot_name:
-            shot_found = False
-            for shot in job.shot_info:
-                if shot.outer_name != shot_name:
-                    self.logger.info("Disabling shot %s" % shot.outer_name)
-                    shot.enabled = False
-                else:
-                    shot_found = True
-            if not shot_found:
-                raise ValueError(
-                    "Unable to find shot %s in sequence %s, aborting..." % (shot_name, sequence_path)
-                )
-        # Set settings from presets, if any
-        if presets:
-            job.set_preset_origin(presets)
-        # Ensure the settings we need are set.
+
+        # Configure the job
         config = job.get_configuration()
+        
         # Default rendering
         config.find_or_add_setting_by_class(unreal.MoviePipelineDeferredPassBase)
         
+        # ProRes 출력 설정
+        prores_output = config.find_or_add_setting_by_class(unreal.MoviePipelineAppleProResOutput)
+        prores_output.output_directory = unreal.DirectoryPath(output_folder)
+        prores_output.output_resolution = unreal.IntPoint(1920, 1080)
+        prores_output.file_name_format = movie_name
+        prores_output.override_existing_output = True
+        
         # EXR 출력 설정
-        if output_path.lower().endswith('.exr'):
-            exr_output = config.find_or_add_setting_by_class(unreal.MoviePipelineImageSequenceOutput_EXR)
-            exr_output.output_directory = unreal.DirectoryPath(output_folder)
-            exr_output.output_resolution = unreal.IntPoint(1920, 1080)
-            exr_output.file_name_format = movie_name
-            exr_output.override_existing_output = True
-            # EXR 특정 설정
-            exr_output.compression = unreal.EXRCompressionFormat.ZIP
-            exr_output.bit_depth = unreal.EXRBitDepth.BIT_DEPTH_32
-        else:
-            # 기존 무비 출력 설정
-            config.find_or_add_setting_by_class(unreal.MoviePipelineAppleProResOutput)
+        exr_output = config.find_or_add_setting_by_class(unreal.MoviePipelineImageSequenceOutput_EXR)
+        exr_output.output_directory = unreal.DirectoryPath(output_folder)
+        exr_output.output_resolution = unreal.IntPoint(1920, 1080)
+        exr_output.file_name_format = "{movie_name}_EXR".format(movie_name=movie_name)
+        exr_output.override_existing_output = True
+        # EXR 특정 설정
+        exr_output.compression = unreal.EXRCompressionFormat.ZIP
+        exr_output.bit_depth = unreal.EXRBitDepth.BIT_DEPTH_32
+
         # Remove problematic settings
         for setting, reason in self._check_render_settings(config):
             self.logger.warning("Disabling %s: %s." % (setting.get_name(), reason))
             config.remove_setting(setting)
-
-        # Default rendering
-        config.find_or_add_setting_by_class(unreal.MoviePipelineDeferredPassBase)
-        # Render to a movie
-        config.find_or_add_setting_by_class(unreal.MoviePipelineAppleProResOutput)
-        # TODO: check which codec we should use.
-
-        # We render in a forked process that we can control.
-        # It would be possible to render in from the running process using an
-        # Executor, however it seems to sometimes deadlock if we don't let Unreal
-        # process its internal events, rendering is asynchronous and being notified
-        # when the render completed does not seem to be reliable.
-        # Sample code:
-        #    exc = unreal.MoviePipelinePIEExecutor()
-        #    # If needed, we can store data in exc.user_data
-        #    # In theory we can set a callback to be notified about completion
-        #    def _on_movie_render_finished_cb(executor, result):
-        #       print("Executor %s finished with %s" % (executor, result))
-        #    # exc.on_executor_finished_delegate.add_callable(_on_movie_render_finished_cb)
-        #    r = qsub.render_queue_with_executor_instance(exc)
 
         # We can't control the name of the manifest file, so we save and then rename the file.
         _, manifest_path = unreal.MoviePipelineEditorLibrary.save_queue_to_manifest_file(queue)
@@ -900,9 +870,7 @@ class UnrealMoviePublishPlugin(HookBaseClass):
             "",
         )
         self.logger.debug("Manifest short path: %s" % manifest_path)
-        # Command line parameters were retrieved by submitting a queue in Unreal Editor with
-        # a MoviePipelineNewProcessExecutor executor.
-        # https://docs.unrealengine.com/4.27/en-US/PythonAPI/class/MoviePipelineNewProcessExecutor.html?highlight=executor
+
         cmd_args = [
             sys.executable,
             "%s" % os.path.join(
@@ -922,7 +890,6 @@ class UnrealMoviePublishPlugin(HookBaseClass):
             "-windowed",
             "-ResX=1280",
             "-ResY=720",
-            # TODO: check what these settings are
             "-dpcvars=%s" % ",".join([
                 "sg.ViewDistanceQuality=4",
                 "sg.AntiAliasingQuality=4",
@@ -946,7 +913,6 @@ class UnrealMoviePublishPlugin(HookBaseClass):
                 "a.URO.Enable=0",
             ]),
             "-execcmds=r.HLOD 0",
-            # This need to be a path relative the to the Unreal project "Saved" folder.
             "-MoviePipelineConfig=\"%s\"" % manifest_path,
         ]
         unreal.log(
