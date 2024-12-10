@@ -339,8 +339,8 @@ class UnrealSessionCollector(HookBaseClass):
                 # Unreal 5.5 호환 방식
                 from unreal import MovieSceneSequenceExtensions
 
-                master_tracks = MovieSceneSequenceExtensions.get_master_tracks(lvseq)
-                master_tracks = [t for t in master_tracks if isinstance(t, unreal.MovieSceneCinematicShotTrack)]
+                master_tracks = MovieSceneSequenceExtensions.find_tracks_by_type(lvseq, unreal.MovieSceneCinematicShotTrack)
+
 
 
             for track in master_tracks:
