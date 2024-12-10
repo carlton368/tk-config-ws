@@ -337,12 +337,11 @@ class UnrealSessionCollector(HookBaseClass):
                 master_tracks = lvseq.find_master_tracks_by_type(unreal.MovieSceneCinematicShotTrack)
             else:
                 # Unreal 5.5 호환 방식
-                movie_scene = lvseq.get_movie_scene()
-                if not movie_scene:
-                    continue
-                # get_master_tracks() 후 CinematicShotTrack 타입 필터링
-                master_tracks = [t for t in movie_scene.get_master_tracks()
-                                 if isinstance(t, unreal.MovieSceneCinematicShotTrack)]
+                from unreal import MovieSceneSequenceExtensions
+
+                master_tracks = MovieSceneSequenceExtensions.get_master_tracks(lvseq)
+                master_tracks = [t for t in master_tracks if isinstance(t, unreal.MovieSceneCinematicShotTrack)]
+
 
             for track in master_tracks:
                 for section in track.get_sections():
