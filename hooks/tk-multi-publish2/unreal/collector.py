@@ -319,30 +319,39 @@ class UnrealSessionCollector(HookBaseClass):
         """
         Build a dictionary for all Level Sequences where keys are Level Sequences
         and values the list of edits they are in.
-
-        :returns: A dictionary of :class:`unreal.LevelSequence` where values are
-                  lists of :class:`SequenceEdit`.
         """
         sequence_edits = defaultdict(list)
         unreal_sg = sgtk.platform.current_engine().unreal_sg_engine
         level_sequence_class = unreal.TopLevelAssetPath("/Script/LevelSequence", "LevelSequence")
         asset_helper = unreal.AssetRegistryHelpers.get_asset_registry()
-        # Retrieve all Level Sequence assets
+
         all_level_sequences = asset_helper.get_assets_by_class(level_sequence_class)
         for lvseq_asset in all_level_sequences:
             lvseq = unreal.load_asset(unreal_sg.object_path(lvseq_asset), unreal.LevelSequence)
-            # Check shots
-            for track in lvseq.find_master_tracks_by_type(unreal.MovieSceneCinematicShotTrack):
+            if not lvseq:
+                continue
+
+            # 5.4와 5.5를 동시에 지원하기 위한 체크
+            if hasattr(lvseq, "find_master_tracks_by_type"):
+                # Unreal 5.4 호환 방식
+                master_tracks = lvseq.find_master_tracks_by_type(unreal.MovieSceneCinematicShotTrack)
+            else:
+                # Unreal 5.5 호환 방식
+                movie_scene = lvseq.get_movie_scene()
+                if not movie_scene:
+                    continue
+                # get_master_tracks() 후 CinematicShotTrack 타입 필터링
+                master_tracks = [t for t in movie_scene.get_master_tracks()
+                                 if isinstance(t, unreal.MovieSceneCinematicShotTrack)]
+
+            for track in master_tracks:
                 for section in track.get_sections():
-                    # Not sure if you can have anything else than a MovieSceneSubSection
-                    # in a MovieSceneCinematicShotTrack, but let's be cautious here.
                     try:
-                        # Get the Sequence attached to the section and check if
-                        # it is the one we're looking for.
                         section_seq = section.get_sequence()
                         sequence_edits[section_seq].append(
                             SequenceEdit(lvseq, track, section)
                         )
                     except AttributeError:
                         pass
+
         return sequence_edits
